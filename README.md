@@ -27,8 +27,8 @@ npm run build                # 静的ファイルを生成（dist/）
 
 ```dotenv
 VITE_API_ENDPOINT=https://...
-VITE_SHOP_ID=your-shop-id
-VITE_API_KEY=your-api-key
+VITE_SHOP_ID=your-shop-id # loginのメールアドレス
+VITE_API_KEY=your-api-key #管理画面から出力できるAPIキー
 VITE_TAX_MODE=inclusive   # inclusive | exclusive | none
 VITE_TAX_RATE=10
 ```
