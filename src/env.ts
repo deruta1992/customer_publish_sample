@@ -1,6 +1,7 @@
 export type TaxMode = 'inclusive' | 'exclusive' | 'none'
 
-const DEFAULT_API_ENDPOINT = 'https://us-central1-kvitanco-163006.cloudfunctions.net/openapi/invoice'
+const DEFAULT_API_ENDPOINT = 'https://rqopkcftnc.execute-api.ap-northeast-1.amazonaws.com/prod/invoice/'
+const DEFAULT_DEV_ENDPOINT = '/openapi/invoice'
 const DEFAULT_TAX_RATE = 10
 
 const parseTaxMode = (value?: string): TaxMode => {
@@ -19,7 +20,8 @@ const parseTaxRate = (value?: string): number => {
  */
 export const ENV = {
   /** 領収証予約APIのエンドポイントURL。 */
-  API_ENDPOINT: import.meta.env.VITE_API_ENDPOINT || DEFAULT_API_ENDPOINT,
+  API_ENDPOINT:
+    import.meta.env.VITE_API_ENDPOINT || (import.meta.env.DEV ? DEFAULT_DEV_ENDPOINT : DEFAULT_API_ENDPOINT),
   /** Kvitancoで発行された店舗ID。 */
   SHOP_ID: import.meta.env.VITE_SHOP_ID || 'your-shop-id',
   /** APIキー。GitHub Pages公開時はGitHub Secretsなどでビルド時に注入してください。 */

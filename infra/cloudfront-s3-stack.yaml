@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  CloudFront + S3 静的ホスティング基盤。存在しない場合はS3バケットとCloudFrontディストリビューションを
+  自動的に生成し、Origin Access Identityで保護されたSPAホスティング環境を構築します。
+
+Parameters:
+  SiteBucketName:
+    Type: String
+    Default: ''
+    Description: '任意: 既存または希望するバケット名。未入力の場合はAWS側で一意の名前を自動採番します。'
+  LogsBucketName:
+    Type: String
+    Default: ''
+    Description: '任意: CloudFrontアクセスログ保存用バケット名。未入力なら自動命名されます。'
+  PriceClass:
+    Type: String
+    Default: PriceClass_100
+    AllowedValues:
+      - PriceClass_100
+      - PriceClass_200
+      - PriceClass_All
+    Description: 'CloudFrontの配信リージョン範囲。'
+  CertificateArn:
+    Type: String
+    Default: ''
+    Description: '任意: us-east-1に発行済みのACM証明書ARN。カスタムドメインを使わない場合は空のままでOKです。'
+
+Conditions:
+  HasCustomSiteBucketName: !Not [!Equals [!Ref SiteBucketName, '']]
+  HasCustomLogsBucketName: !Not [!Equals [!Ref LogsBucketName, '']]
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+
+Resources:
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !If [HasCustomSiteBucketName, !Ref SiteBucketName, !Ref AWS::NoValue]
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Project
+          Value: kvitanco-receipt
+
+  LogsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !If [HasCustomLogsBucketName, !Ref LogsBucketName, !Ref AWS::NoValue]
+      AccessControl: LogDeliveryWrite
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  CloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: Access identity for kvitanco receipt SPA
+
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+            Action:
+              - s3:GetObject
+            Resource: !Sub '${SiteBucket.Arn}/*'
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        PriceClass: !Ref PriceClass
+        Logging:
+          Bucket: !GetAtt LogsBucket.DomainName
+          Prefix: cloudfront/
+        Origins:
+          - Id: SiteBucketOrigin
+            DomainName: !GetAtt SiteBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${CloudFrontOAI}'
+        DefaultCacheBehavior:
+          TargetOriginId: SiteBucketOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          MinTTL: 0
+          DefaultTTL: 300
+          MaxTTL: 86400
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        ViewerCertificate:
+          !If
+            - HasCertificate
+            - AcmCertificateArn: !Ref CertificateArn
+              SslSupportMethod: sni-only
+              MinimumProtocolVersion: TLSv1.2_2021
+            - CloudFrontDefaultCertificate: true
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: none
+
+Outputs:
+  SiteBucketNameOutput:
+    Description: 静的ファイルを配置するS3バケット名。
+    Value: !Ref SiteBucket
+  LogsBucketNameOutput:
+    Description: CloudFrontアクセスログ保存先バケット名。
+    Value: !Ref LogsBucket
+  CloudFrontDistributionId:
+    Description: CloudFrontディストリビューションID。
+    Value: !Ref CloudFrontDistribution
+  CloudFrontDomainName:
+    Description: CloudFront配信ドメイン。DNSのCNAME設定に利用できます。
+    Value: !GetAtt CloudFrontDistribution.DomainName

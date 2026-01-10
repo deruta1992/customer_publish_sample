@@ -6,6 +6,7 @@ import type { TaxMode } from './env'
 type Step = 'terms' | 'form' | 'thankyou'
 
 interface FormState {
+  usagePlace: string
   name: string
   email: string
   transactionDate: string
@@ -64,6 +65,7 @@ const state: {
 
 function getInitialFormState(): FormState {
   return {
+    usagePlace: '',
     name: '',
     email: '',
     transactionDate: getDefaultTransactionDate(),
@@ -86,10 +88,10 @@ function render() {
   app.innerHTML = `
     <main class="app-shell">
       <header class="hero">
-        <span class="hero__eyebrow">Kvitanco Invoice</span>
-        <h1 class="hero__title">WEB領収証発行予約</h1>
+        <span class="hero__eyebrow">Kvitanco Receipt</span>
+        <h1 class="hero__title">領収書発行申請フォーム</h1>
         <p class="hero__subtitle">
-          これはデモプログラムです。
+          利用約款への同意から申請内容の入力、確認、送信、完了通知までをワンページで完結します。
         </p>
         <span class="tax-pill">${TAX_LABELS[ENV.TAX_MODE]} / 税率 ${ENV.TAX_RATE}%</span>
       </header>
@@ -119,8 +121,17 @@ function renderStep(step: Step, computed: CalculatedAmounts): string {
     return `
       <section class="card">
         <div class="step-indicator"><strong>STEP 02</strong> 情報入力</div>
+        <p class="form-guidance">
+          必要事項を入力してください。全て必須です。<br />
+          ※ 過去の日付の領収書は発行できません。
+        </p>
         <form id="reservation-form" novalidate>
           <div class="form-grid">
+            <div class="input-field${fieldErrorClass('usagePlace')}">
+              <label for="usagePlace">利用場所 *</label>
+              <input id="usagePlace" name="usagePlace" type="text" value="${escapeAttribute(state.form.usagePlace)}" aria-invalid="${Boolean(getFieldError('usagePlace'))}" required />
+              ${fieldErrorText('usagePlace')}
+            </div>
             <div class="input-field${fieldErrorClass('name')}">
               <label for="name">領収証宛名 *</label>
               <input id="name" name="name" type="text" autocomplete="name" value="${escapeAttribute(state.form.name)}" aria-invalid="${Boolean(getFieldError('name'))}" required />
@@ -159,9 +170,9 @@ function renderStep(step: Step, computed: CalculatedAmounts): string {
   return `
     <section class="card thankyou">
       <div class="thankyou__badge">✓</div>
-      <h2 class="thankyou__title">受付が完了しました</h2>
+      <h2 class="thankyou__title">領収書発行申請が完了しました</h2>
       <p class="thankyou__notes">
-        ご入力いただいた内容はAPIへ送信されました。確認メールが${state.submissionSummary?.email ?? 'ご登録のメールアドレス'}宛に届きます。
+        ご入力内容を受付し、確認メールを${state.submissionSummary?.email ?? 'ご登録のメールアドレス'}宛に送信しました。ウィンドウを閉じて手続きを終了してください。
       </p>
       ${state.submissionSummary ? `
         <div class="summary-panel">
@@ -183,6 +194,7 @@ function renderConfirmModal(computed: CalculatedAmounts): string {
       <div class="modal-card">
         <h2>入力内容の確認</h2>
         <ul class="confirm-list">
+          <li>利用場所: <span>${escapeHtml(state.form.usagePlace)}</span></li>
           <li>宛名: <span>${escapeHtml(state.form.name) || '（未入力）'}</span></li>
           <li>メール: <span>${escapeHtml(state.form.email)}</span></li>
           <li>取引日時: <span>${formatDateDisplay(state.form.transactionDate)}</span></li>
@@ -274,6 +286,10 @@ function validateForm(form: FormState): {
 } {
   const errors: Partial<Record<FormField, string>> = {}
 
+  if (!form.usagePlace.trim()) {
+    errors.usagePlace = '利用場所を入力してください。'
+  }
+
   if (!form.name.trim()) {
     errors.name = '宛名を入力してください。'
   }
@@ -344,7 +360,7 @@ async function submitReservation() {
       reference: body?.id ?? body?.reference ?? body?.requestId,
       total: computed.total,
       email: state.form.email,
-      transactionDateTime: payload.invoice.transactionDateTime,
+      transactionDateTime: payload.datetime,
     }
 
     state.step = 'thankyou'
@@ -369,15 +385,20 @@ function buildPayload(form: FormState) {
     name: form.name.trim(),
     email: form.email.trim(),
     phone: '',
-    kvitancoInvoiceShopId: ENV.SHOP_ID,
-    invoice: {
-      transactionDateTime: transactionDateISO,
-      subtotal: amounts.subtotal.toFixed(2),
-      total: amounts.total.toFixed(2),
-      taxInclude: amounts.taxInclude.toFixed(2),
-      taxRate: amounts.taxRate.toFixed(2),
-      memo: '',
-    },
+    shopid: ENV.SHOP_ID,
+    price: amounts.total.toFixed(2),
+    method: 'email',
+    paymethod: 'cash',
+    memo: form.usagePlace.trim()
+      ? `${form.usagePlace.trim()}ご利用代金として`
+      : '',
+    tadashi: form.usagePlace.trim()
+      ? `${form.usagePlace.trim()}ご利用代金として`
+      : '',
+    datetime: transactionDateISO,
+    subtotal: amounts.subtotal.toFixed(2),
+    tax: amounts.taxInclude.toFixed(2),
+    taxrate: amounts.taxRate.toFixed(2),
   }
 }
 

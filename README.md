@@ -5,6 +5,7 @@
 
 - TypeScript + Vite構成（静的ファイルをそのままレンタルサーバーへ配置可能）
 - 合計のみを入力し、税額/小計はクライアントで自動計算
+- 利用場所・宛名・メールアドレス・取引日時の全項目を必須入力
 - 電話番号は取得せず、メールアドレスを基軸に受付
 - 利用約款は `public/terms.md` のMarkdownをレンダリングして表示
 - 店舗IDやAPIキーはViteの環境変数経由で注入し、リポジトリには平文を残さない
@@ -77,12 +78,42 @@ jobs:
         uses: actions/deploy-pages@v4
 ```
 
+  ## S3 + CloudFront へのデプロイ（CloudFormation）
+
+  SPA一式をAmazon S3/CloudFrontで配信するためのテンプレートを [infra/cloudfront-s3-stack.yaml](infra/cloudfront-s3-stack.yaml) に用意しています。既存バケットがなくてもスタック作成時に自動的にS3/CloudFrontを作成します。
+
+  1. ビルド
+    ```sh
+    npm run build
+    ```
+  2. CloudFormationスタックの作成／更新（`SiteBucketName` や `LogsBucketName` は空欄にするとAWS側で一意の名前が採番されます）
+    ```sh
+    aws cloudformation deploy \
+      --stack-name kvitanco-receipt-hosting \
+      --template-file infra/cloudfront-s3-stack.yaml \
+      --capabilities CAPABILITY_NAMED_IAM \
+      --parameter-overrides SiteBucketName="" LogsBucketName="" PriceClass=PriceClass_100 CertificateArn=""
+    ```
+  3. 成功後、Outputsに表示される `SiteBucketNameOutput` を使って静的ファイルをアップロードします。
+    ```sh
+    aws s3 sync dist/ s3://<SiteBucketNameOutput>/ --delete
+    ```
+  4. 変更を即時反映したい場合はCloudFrontディストリビューションを無効化せず、Invalidationを発行します。
+    ```sh
+    aws cloudfront create-invalidation \
+      --distribution-id <CloudFrontDistributionId> \
+      --paths "/*"
+    ```
+
+  テンプレートにはCloudFront Origin Access Identity、S3バケットポリシー、ログ保存バケット、SPA向けの 403/404 → index.html リダイレクトなどが含まれています。バケットや証明書を既存のものに合わせたい場合はパラメーターを指定してください。
+
 ## ディレクトリ構成（抜粋）
 
 - `index.html`
 - `src/main.ts`
 - `src/env.ts`
 - `src/style.css`
+  - `infra/cloudfront-s3-stack.yaml`
 - `public/terms.md`
 - `.env.example`
 
