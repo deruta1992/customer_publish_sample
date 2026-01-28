@@ -1,5 +1,18 @@
 # WEB領収証発行予約システム
 
+## デモ
+サンプルアプリケーションは以下のURLで確認できます：
+**https://deruta1992.github.io/customer_publish_sample/**
+
+## 利用について
+このアプリケーションを利用するには、[Kvitanco Invoice](https://invoice.kvitanco.biz/)への登録が必要です。
+
+- **サービス概要**: https://kvitanco.biz/services/kvitanco-invoice
+- **登録ページ**: https://invoice.kvitanco.biz/
+- **利用料金**: 無料
+
+Kvitanco Invoiceは無料で利用できるWEB領収証発行サービスです。ぜひご活用ください。
+
 ## 概要
 お客様がWEB上からセルフで領収証発行を予約できる静的Webアプリです。
 
